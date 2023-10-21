@@ -9,6 +9,7 @@
     "lint:fix": "eslint . --ext .ts --fix",
     "test:watch": "npm run test:watch -w ring-client-api",
     "example": "turbo build --filter=ring-client-api && DEBUG=ring node -r @swc-node/register ./packages/examples/example.ts",
+    "motion-example": "turbo build --filter=ring-client-api && DEBUG=ring node -r @swc-node/register ./packages/examples/motion-example.ts",
     "api-example": "turbo build --filter=ring-client-api && DEBUG=ring node -r @swc-node/register ./packages/examples/api-example.ts",
     "record-example": "turbo build --filter=ring-client-api && DEBUG=ring node -r @swc-node/register ./packages/examples/record-example.ts",
     "return-audio-example": "turbo build --filter=ring-client-api && DEBUG=ring node -r @swc-node/register ./packages/examples/return-audio-example.ts",
