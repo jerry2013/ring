@@ -9,6 +9,7 @@ console.log = _log.bind(console, '%s', timestamp)
 
 import 'dotenv/config'
 import { PushNotificationAction, RingApi, RingCamera } from '../ring-client-api'
+import { StreamingSession } from '../ring-client-api/lib/streaming/streaming-session'
 import { timer } from 'rxjs'
 import { skip } from 'rxjs/operators'
 import { constants } from 'fs'
@@ -96,18 +97,32 @@ async function example() {
         }
       })
 
+      let stopper: number, liveCall: StreamingSession | undefined
+      const stopHandler: TimerHandler = () => {
+        if (liveCall) {
+          liveCall.stop()
+          liveCall = undefined
+          console.log('Done recording video')
+        }
+      }
+
       camera.onMotionDetected.subscribe(async (motion) => {
         console.log(`${motion ? 'Motion' : 'Ding'} from ${camera.name} ...`)
+
+        clearTimeout(stopper)
+        stopper = setTimeout(stopHandler, 120e3)
+
         if (!motion) {
+          // extend the recording duration
           return
         }
 
         console.log(`Starting Video from ${camera.name} ...`)
-        await camera.recordToFile(
-          await outputFile(camera, 'motion', 'mp4'),
-          120
-        )
-        console.log('Done recording video')
+
+        liveCall = await camera.startLiveCall()
+        await liveCall.startTranscoding({
+          output: [await outputFile(camera, 'motion', 'mp4')],
+        })
       })
 
       camera.onNewNotification.subscribe(({ action, ding, subtype }) => {
