@@ -83,7 +83,10 @@ async function outputFile(camera: RingCamera, type: string, ext: string) {
   const [date, time] = timestamp.toString().replace(/:/g, '.').split('T'),
     dir = join(outputDir, String(camera.id), date)
   await access(dir, constants.W_OK).catch(() => {
-    mergeSnaps(camera.id, date).catch(console.error)
+    const dt = new Date(date),
+      yesterday = new Date(dt.setDate(dt.getDate() - 1)),
+      yDate = yesterday.toISOString().split('T')[0]
+    mergeSnaps(camera.id, yDate).catch(console.error)
     return mkdir(dir, { recursive: true })
   })
   return join(dir, `${type}-${time}.${ext}`)
