@@ -1,13 +1,19 @@
 const _log = console.log,
-  timestamp = function () {
-    return
-  }
-timestamp.toString = function () {
-  return new Date().toISOString()
-}
+  _error = console.error,
+  timestamp = Object.assign(
+    {},
+    {
+      toString: function () {
+        return new Date().toISOString()
+      },
+    }
+  )
 console.log = _log.bind(console, '%s', timestamp)
+console.error = _error.bind(console, '%s', timestamp)
 
 import 'dotenv/config'
+import { spawn } from 'child_process'
+import { FfmpegProcess } from '@homebridge/camera-utils'
 import { PushNotificationAction, RingApi, RingCamera } from '../ring-client-api'
 import { StreamingSession } from '../ring-client-api/lib/streaming/streaming-session'
 import { timer } from 'rxjs'
@@ -18,10 +24,68 @@ import { join } from 'node:path'
 
 const outputDir = process.env.OUTPUT_DIR || join(__dirname, 'output')
 
+function* chunks<T>(arr: T[], n: number): Generator<T[], void> {
+  for (let i = 0; i < arr.length; i += n) {
+    yield arr.slice(i, i + n)
+  }
+}
+
+const OverlayTextFilter = String.raw`drawtext="fontsize=10:fontcolor=yellow:fontfile=FreeSans.ttf:text='%{metadata\:lavf.image2dec.source_basename\:NA}':x=10:y=10"`
+
+async function merge(cameraId: number, date: string, hour: string) {
+  const folder = join(outputDir, String(cameraId)),
+    snaps = `snap-${hour}*.jpg`
+
+  await new Promise<number | null>((resolve) => {
+    new FfmpegProcess({
+      ffmpegArgs: [
+        '-nostats',
+        ['-loglevel', 'error'],
+        ['-framerate', 2],
+        ['-pattern_type', 'glob'],
+        ['-export_path_metadata', 1],
+        ['-i', join(folder, snaps)],
+        ['-vf', OverlayTextFilter],
+        join(folder, `timelapse-${hour}.mkv`),
+      ].flatMap(String),
+      exitCallback: (code) => resolve(code),
+      logLabel: `Timelapse (${cameraId}/${date} ${hour})`,
+      // logger: {
+      //   error: console.error,
+      //   info: console.log,
+      // },
+    })
+  }).then((result) => {
+    if (result === 1) {
+      // find . -name snaps -delete
+      spawn('find', [folder, '-name', snaps, '-delete'], {
+        detached: true,
+        stdio: 'ignore',
+      }).unref()
+    }
+  })
+}
+
+async function mergeSnaps(cameraId: number, date: string) {
+  for (const hours of chunks(
+    new Array(24).fill(0).map((_, i) => i),
+    2 // concurrent ffmpeg processes
+  )) {
+    await Promise.all(
+      hours.map((hour) => {
+        return merge(cameraId, date, String(hour).padStart(2, '0'))
+      })
+    )
+  }
+}
+
 async function outputFile(camera: RingCamera, type: string, ext: string) {
   const [date, time] = timestamp.toString().replace(/:/g, '.').split('T'),
     dir = join(outputDir, String(camera.id), date)
-  await access(dir, constants.W_OK).catch(() => mkdir(dir, { recursive: true }))
+  await access(dir, constants.W_OK).catch(() => {
+    mergeSnaps(camera.id, date).catch(console.error)
+    return mkdir(dir, { recursive: true })
+  })
   return join(dir, `${type}-${time}.${ext}`)
 }
 
@@ -36,7 +100,7 @@ async function example() {
     allCameras = await ringApi.getCameras()
 
   console.log(
-    `Found ${locations.length} location(s) with ${allCameras.length} camera(s).`,
+    `Found ${locations.length} location(s) with ${allCameras.length} camera(s).`
   )
 
   ringApi.onRefreshTokenUpdated.subscribe(
@@ -53,7 +117,7 @@ async function example() {
           .replace(oldRefreshToken, newRefreshToken)
 
       await writeFile('.env', updatedConfig)
-    },
+    }
   )
 
   for (const location of locations) {
@@ -68,7 +132,7 @@ async function example() {
       devices = await location.getDevices()
 
     console.log(
-      `Location ${location.name} (${location.id}) has the following ${cameras.length} camera(s):`,
+      `Location ${location.name} (${location.id}) has the following ${cameras.length} camera(s):`
     )
 
     for (const camera of cameras) {
@@ -76,7 +140,7 @@ async function example() {
     }
 
     console.log(
-      `Location ${location.name} (${location.id}) has the following ${devices.length} device(s):`,
+      `Location ${location.name} (${location.id}) has the following ${devices.length} device(s):`
     )
 
     for (const device of devices) {
