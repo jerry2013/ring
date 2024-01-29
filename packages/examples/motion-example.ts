@@ -36,6 +36,7 @@ async function merge(cameraId: number, date: string, hour: string) {
   const folder = join(outputDir, String(cameraId)),
     snaps = `snap-${hour}*.jpg`
 
+  console.log(`Merging ${snaps} in ${folder}.`)
   await new Promise<number | null>((resolve) => {
     new FfmpegProcess({
       ffmpegArgs: [
@@ -50,12 +51,13 @@ async function merge(cameraId: number, date: string, hour: string) {
       ].flatMap(String),
       exitCallback: (code) => resolve(code),
       logLabel: `Timelapse (${cameraId}/${date} ${hour})`,
-      // logger: {
-      //   error: console.error,
-      //   info: console.log,
-      // },
+      logger: {
+        error: console.error,
+        info: console.log,
+      },
     })
   }).then((result) => {
+    console.log(`Done merging ${snaps} in ${folder}: ${result}`)
     if (result === 1) {
       // find . -name snaps -delete
       spawn('find', [folder, '-name', snaps, '-delete'], {
