@@ -33,7 +33,7 @@ function* chunks<T>(arr: T[], n: number): Generator<T[], void> {
 const OverlayTextFilter = String.raw`drawtext="fontsize=10:fontcolor=yellow:fontfile=FreeSans.ttf:text='%{metadata\:lavf.image2dec.source_basename\:NA}':x=10:y=10"`
 
 async function merge(cameraId: number, date: string, hour: string) {
-  const folder = join(outputDir, String(cameraId)),
+  const folder = join(outputDir, String(cameraId), date),
     snaps = `snap-${hour}*.jpg`
 
   console.log(`Merging ${snaps} in ${folder}.`)
@@ -48,7 +48,7 @@ async function merge(cameraId: number, date: string, hour: string) {
         ['-i', join(folder, snaps)],
         ['-vf', OverlayTextFilter],
         join(folder, `timelapse-${hour}.mkv`),
-      ].flatMap(String),
+      ].flatMap((v) => v),
       exitCallback: (code) => resolve(code),
       logLabel: `Timelapse (${cameraId}/${date} ${hour})`,
       logger: {
@@ -57,8 +57,7 @@ async function merge(cameraId: number, date: string, hour: string) {
       },
     })
   }).then((result) => {
-    console.log(`Done merging ${snaps} in ${folder}: ${result}`)
-    if (result === 1) {
+    if (result === 0) {
       // find . -name snaps -delete
       spawn('find', [folder, '-name', snaps, '-delete'], {
         detached: true,
