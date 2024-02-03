@@ -12,8 +12,6 @@ console.log = _log.bind(console, '%s', timestamp)
 console.error = _error.bind(console, '%s', timestamp)
 
 import 'dotenv/config'
-import { spawn } from 'child_process'
-import { FfmpegProcess } from '@homebridge/camera-utils'
 import { PushNotificationAction, RingApi, RingCamera } from '../ring-client-api'
 import { StreamingSession } from '../ring-client-api/lib/streaming/streaming-session'
 import { timer } from 'rxjs'
@@ -21,64 +19,9 @@ import { skip } from 'rxjs/operators'
 import { constants } from 'fs'
 import { readFile, writeFile, mkdir, access } from 'fs/promises'
 import { join } from 'node:path'
+import { mergeSnaps } from './merge-snaps'
 
 const outputDir = process.env.OUTPUT_DIR || join(__dirname, 'output')
-
-function* chunks<T>(arr: T[], n: number): Generator<T[], void> {
-  for (let i = 0; i < arr.length; i += n) {
-    yield arr.slice(i, i + n)
-  }
-}
-
-const OverlayTextFilter = String.raw`drawtext="fontsize=10:fontcolor=yellow:fontfile=FreeSans.ttf:text='%{metadata\:lavf.image2dec.source_basename\:NA}':x=10:y=10"`
-
-async function merge(cameraId: number, date: string, hour: string) {
-  const folder = join(outputDir, String(cameraId), date),
-    snaps = `snap-${hour}*.jpg`
-
-  console.log(`Merging ${snaps} in ${folder}.`)
-  await new Promise<number | null>((resolve) => {
-    new FfmpegProcess({
-      ffmpegArgs: [
-        '-nostats',
-        ['-loglevel', 'error'],
-        ['-framerate', 2],
-        ['-pattern_type', 'glob'],
-        ['-export_path_metadata', 1],
-        ['-i', join(folder, snaps)],
-        ['-vf', OverlayTextFilter],
-        join(folder, `timelapse-${hour}.mkv`),
-      ].flatMap((v) => v),
-      exitCallback: (code) => resolve(code),
-      logLabel: `Timelapse (${cameraId}/${date} ${hour})`,
-      logger: {
-        error: console.error,
-        info: console.log,
-      },
-    })
-  }).then((result) => {
-    if (result === 0) {
-      // find . -name snaps -delete
-      spawn('find', [folder, '-name', snaps, '-delete'], {
-        detached: true,
-        stdio: 'ignore',
-      }).unref()
-    }
-  })
-}
-
-async function mergeSnaps(cameraId: number, date: string) {
-  for (const hours of chunks(
-    new Array(24).fill(0).map((_, i) => i),
-    2 // concurrent ffmpeg processes
-  )) {
-    await Promise.all(
-      hours.map((hour) => {
-        return merge(cameraId, date, String(hour).padStart(2, '0'))
-      })
-    )
-  }
-}
 
 async function outputFile(camera: RingCamera, type: string, ext: string) {
   const [date, time] = timestamp.toString().replace(/:/g, '.').split('T'),
@@ -87,7 +30,7 @@ async function outputFile(camera: RingCamera, type: string, ext: string) {
     const dt = new Date(date),
       yesterday = new Date(dt.setDate(dt.getDate() - 1)),
       yDate = yesterday.toISOString().split('T')[0]
-    mergeSnaps(camera.id, yDate).catch(console.error)
+    mergeSnaps(outputDir, camera.id, yDate).catch(console.error)
     return mkdir(dir, { recursive: true })
   })
   return join(dir, `${type}-${time}.${ext}`)
