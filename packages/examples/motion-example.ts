@@ -12,14 +12,14 @@ console.log = _log.bind(console, '%s', timestamp)
 console.error = _error.bind(console, '%s', timestamp)
 
 import 'dotenv/config'
-import { PushNotificationAction, RingApi, RingCamera } from '../ring-client-api'
-import { StreamingSession } from '../ring-client-api/lib/streaming/streaming-session'
+import { PushNotificationAction, RingApi, RingCamera } from 'ring-client-api'
+import { StreamingSession } from 'ring-client-api/streaming/streaming-session'
 import { timer } from 'rxjs'
 import { skip } from 'rxjs/operators'
 import { constants } from 'fs'
 import { readFile, writeFile, mkdir, access } from 'fs/promises'
 import { join } from 'node:path'
-import { mergeSnaps } from './merge-snaps'
+import { mergeSnaps } from './merge-snaps.ts'
 
 const outputDir = process.env.OUTPUT_DIR || join(__dirname, 'output')
 
@@ -66,34 +66,6 @@ async function example() {
       await writeFile('.env', updatedConfig)
     }
   )
-
-  for (const location of locations) {
-    location.onConnected.pipe(skip(1)).subscribe((connected) => {
-      const status = connected ? 'Connected to' : 'Disconnected from'
-      console.log(`**** ${status} location ${location.name} - ${location.id}`)
-    })
-  }
-
-  for (const location of locations) {
-    const cameras = location.cameras,
-      devices = await location.getDevices()
-
-    console.log(
-      `Location ${location.name} (${location.id}) has the following ${cameras.length} camera(s):`
-    )
-
-    for (const camera of cameras) {
-      console.log(`- ${camera.id}: ${camera.name} (${camera.deviceType})`)
-    }
-
-    console.log(
-      `Location ${location.name} (${location.id}) has the following ${devices.length} device(s):`
-    )
-
-    for (const device of devices) {
-      console.log(`- ${device.zid}: ${device.name} (${device.deviceType})`)
-    }
-  }
 
   if (allCameras.length) {
     allCameras.forEach((camera) => {
@@ -151,6 +123,30 @@ async function example() {
     })
 
     console.log('Listening for motion and doorbell presses on your cameras.')
+  }
+
+  for (const location of locations) {
+    console.log(`**** connecting location ${location.name} - ${location.id}`)
+    location.onConnected.pipe(skip(1)).subscribe((connected) => {
+      const status = connected ? 'Connected to' : 'Disconnected from'
+      console.log(`**** ${status} location ${location.name} - ${location.id}`)
+    })
+  
+    const cameras = location.cameras;
+    console.log(
+      `Location ${location.name} (${location.id}) has the following ${cameras.length} camera(s):`
+    )
+    for (const camera of cameras) {
+      console.log(`- ${camera.id}: ${camera.name} (${camera.deviceType})`)
+    }
+
+    const devices = await location.getDevices()
+    console.log(
+      `Location ${location.name} (${location.id}) has the following ${devices.length} device(s):`
+    )
+    for (const device of devices) {
+      console.log(`- ${device.zid}: ${device.name} (${device.deviceType})`)
+    }
   }
 }
 
